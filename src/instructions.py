@@ -2,6 +2,7 @@ from dataclasses import asdict, dataclass
 import os
 from pathlib import Path
 import shutil
+from typing import Dict, List, Optional
 import yaml
 
 
@@ -36,7 +37,7 @@ class ModelInstructions:
             if assistant_name:
                 self.load_from_yaml(assistant_name)
                 print(f"Loaded instructions for {self.name}")
-                print(asdict(self))
+                #print(asdict(self))
             else:
                 print("Error: No iso name provided.")    
         elif method == 'create':
@@ -121,25 +122,27 @@ class ModelInstructions:
         """
         print(f"Iso Configuration:\n{self.to_dict()}")
     
-    def to_prompt_script(self) -> str:
+    def to_prompt_script(self, mem_context: Optional[List[str]], knowledge_context: Optional[List[str]], chat_history: Optional[List[str]], user_request: str) -> List[Dict[str, str]]:
         """
-        Export instructions class a prompt template
+        Export instructions class as a prompt template.
         """
-        return (
-            f"{self.start_token}System: \n"
-            f"{self.system_message}{self.end_token}\n"
-            f"{self.start_token}Assistant: \n"
-            f"{self.assistant_intro}{self.end_token}\n"
-            f"{self.start_token}User: \n"
-            f"Your current focus should be: {self.assistant_focus}{self.end_token}\n"
-            f"{self.mem_start_token}Context from memory: "
-            f"$context{self.mem_end_token}\n"
-            f"{self.history_start_token}Chat History: \n"
-            f"$history{self.history_end_token}\n"
-            f"{self.start_token}$username: \n"
-            f"$user_input{self.end_token}\n"
-            f"{self.start_token}{self.name}: \n"
-        )
+
+        mem_context_str = "\n".join(mem_context) if mem_context else "No related memories"
+        knowledge_context_str = "\n".join(knowledge_context) if knowledge_context else "No related knowledge"
+        chat_history_str = "\n".join(chat_history) if chat_history else "No chat history"
+
+        messages = [
+            {"role": "system", "content": f"{self.system_message}"},
+            {"role": "assistant", "content": f"{self.assistant_intro}"},
+            {"role": "user", "content": f"Your current focus should be: {self.assistant_focus}"},
+            {"role": "system", "content": f"Request context from your memory:\n{mem_context_str}"},
+            {"role": "system", "content": f"Request context from your knowledge base:\n{knowledge_context_str}"},
+            {"role": "system", "content": f"Conversation chat history:\n{chat_history_str}"},
+            {"role": "user", "content": f"User Request: {user_request}"},
+            {"role": "assistant", "content": ""},
+        ]
+
+        return messages
     
     def update_model_instructions(self) -> None:
         """

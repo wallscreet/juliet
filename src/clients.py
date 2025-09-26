@@ -1,14 +1,15 @@
 from dataclasses import dataclass
-import traceback
-from typing import List, Any, Optional
+from typing import List
 from abc import ABC, abstractmethod
 import os
 from uuid import uuid4
 from pydantic import BaseModel
 from openai import OpenAI
-from context import MemoryAdapter
-from messages import Message, MessageCache, start_new_conversation
 from dotenv import load_dotenv
+from instructions import ModelInstructions
+from messages import MessageCache
+from context import ChromaMemoryAdapter, message_cache_format_to_prompt
+
 
 load_dotenv()
 
@@ -158,6 +159,44 @@ class OpenAIClient(LLMClient):
             print(f"Error in OpenAIClient.get_structured_response: {e}")
 
 
+class IsoClient:
+    """
+    Iso agent class that combines instructions, parameters, LLM client, and memory. Responsible for building prompts dynamically, handling context, and generating responses.
+    """
+
+    def __init__(self, llm_client: LLMClient, instructions: ModelInstructions, cache_capacity: int = 20):
+        self.llm_client = llm_client
+        self.instructions = instructions
+        self.message_cache = MessageCache(capacity=cache_capacity)
+        self.memory = ChromaMemoryAdapter()
+    
+    def build_prompt(self, user_input: str):
+        # chat history
+        chat_history = self.message_cache.get_chat_history()
+        chat_history_formatted = message_cache_format_to_prompt(message_history=chat_history)
+        #print(f"Message Cache Formatted: {chat_history_formatted}")
+        
+        # memory context
+        memory_context = self.memory.retrieve(collection_name="memory", query=user_input)
+        #print(f"Memory Context: {memory_context}")
+
+        # knowledge context
+        knowledge_context = self.memory.retrieve(collection_name="knowledge", query=user_input)
+        #print(f"Knowledge Context: {knowledge_context}")
+        
+        # return instructions to prompt script
+        messages = self.instructions.to_prompt_script(mem_context=memory_context, knowledge_context=knowledge_context, chat_history=chat_history_formatted, user_request=user_input)
+        
+        return messages
+    
+    def generate_response(self, model: str, user_input: str):
+        # create request and response messages and add to message cache
+        prompt = self.build_prompt(user_input=user_input)
+        print(f"\n===== PROMPT =====\n{prompt}\n\n")
+        return self.llm_client.get_response(model=model, messages=prompt)
+
+
+
 class ChatClient(ABC):
     @abstractmethod
     def chat_loop(self):
@@ -165,98 +204,8 @@ class ChatClient(ABC):
 
 
 class CliChatClient(ChatClient):
-    def __init__(
-        self,
-        llm_client: LLMClient,
-        model: str,
-        host: str = "Assistant",
-        guest: str = "User",
-        memory_cache: Optional[MessageCache] = None,
-        memory_adapter: Optional[MemoryAdapter] = None,
-    ):
-        """
-        from GPT-5, CLI-based chat client with pluggable memory. I don't like this because I need to have the YAML adapter AND the ChromaAdapter plugged in.
+    def __init__(self):
+        pass
 
-        :param llm_client: Implementation of LLMClient.
-        :param model: Model name to use.
-        :param host: The Iso's name.
-        :param guest: The user's name.
-        :param memory_cache: Short-term memory (deque).
-        :param memory_adapter: Long-term memory backend.
-        """
-        self.llm_client = llm_client
-        self.model = model
-        self.memory_cache = memory_cache or MessageCache(capacity=10)
-        self.memory_adapter = memory_adapter
-
-        self.conversation = start_new_conversation(
-            host=host,
-            host_is_bot=True,
-            guest=guest,
-            guest_is_bot=False,
-        )
-
-    def _create_message(self, role: str, speaker: str, content: str) -> Message:
-        return Message(
-            uuid=str(uuid4()),
-            role=role,
-            speaker=speaker,
-            content=content,
-        )
-
-    def chat_loop(self):
-        """
-        Interactive REPL loop for chatting.
-        """
-        print("Welcome to JulietChat! Type 'exit' or 'quit' to stop.\n")
-
-        while True:
-            try:
-                user_input = input(f"{self.conversation.guest}: ").strip()
-                if user_input.lower() in ["exit", "quit"]:
-                    print("Goodbye!")
-                    break
-
-                # --- Build User Message ---
-                user_message = self._create_message(
-                    role="user",
-                    speaker=self.conversation.guest,
-                    content=user_input,
-                )
-
-                # Collect context from short-term memory
-                messages_for_llm = [{"role": "system", "content": "You are a helpful AI assistant."}]
-                for turn in self.memory_cache.get_chat_history(as_strings=False):
-                    messages_for_llm.append({"role": "user", "content": turn.request.content})
-                    messages_for_llm.append({"role": "assistant", "content": turn.response.content})
-                messages_for_llm.append({"role": "user", "content": user_input})
-
-                # --- Get AI Response ---
-                response_text = self.llm_client.get_response(
-                    model=self.model,
-                    messages=messages_for_llm,
-                )
-
-                iso_message = self._create_message(
-                    role="assistant",
-                    speaker=self.conversation.host,
-                    content=response_text,
-                )
-
-                # --- Record Turn ---
-                turn = self.conversation.create_turn(request=user_message, response=iso_message)
-                self.memory_cache.add_turn(turn)
-
-                if self.memory_adapter:
-                    self.memory_adapter.store_turn(self.conversation.uuid, turn)
-
-                # --- Print AI Response ---
-                print(f"{self.conversation.host}: {response_text}\n")
-
-            except KeyboardInterrupt:
-                print("\nInterrupted. Goodbye!")
-                break
-            except Exception as e:
-                print("Error in chat loop:", e)
-                traceback.print_exc()
-                break
+    def chat(self):
+        pass

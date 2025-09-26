@@ -1,8 +1,10 @@
-from typing import List
+from datetime import datetime
+from typing import List, Optional
+from uuid import uuid4
 import chromadb
 from chromadb.utils import embedding_functions
 import yaml
-from messages import Turn
+from messages import Conversation, Message, Turn
 
 
 def format_chat_history(chat_history: list):
@@ -15,6 +17,18 @@ def format_chat_history(chat_history: list):
     return formatted_history
 
 
+def message_cache_format_to_prompt(message_history):
+    chat_history = []
+    for turn in message_history:
+        turn_request = f"{turn.request.speaker} ({turn.request.timestamp}):\n{turn.request.content}\n"
+        turn_response = f"{turn.response.speaker} ({turn.response.timestamp}):\n{turn.response.content}\n"
+        chat_history.append(turn_request)
+        chat_history.append(turn_response)
+    chat_history = format_chat_history(chat_history)
+    #print(f"\n{chat_history}")
+    return chat_history
+
+
 class MemoryAdapter:
     """
     Abstract interface for long-term memory backends. 
@@ -24,14 +38,14 @@ class MemoryAdapter:
     def store_turn(self, conversation_id: str, turn: Turn):
         raise NotImplementedError
 
-    def retrieve_turns(self, query: str, top_k: int = 5) -> List[Turn]:
+    def retrieve(self, query: str, top_k: int = 5) -> List[Message]:
         raise NotImplementedError
 
 
 class ChromaMemoryAdapter(MemoryAdapter):
     """
     ChromaDB-based long-term memory.
-    Supports multiple collections like facts, history, summaries, etc..
+    Supports multiple collections like 'history', 'facts', 'summaries', etc.
     """
 
     def __init__(self, persist_dir: str = "./chroma_store", embedding_model: str = "all-MiniLM-L6-v2"):
@@ -40,107 +54,103 @@ class ChromaMemoryAdapter(MemoryAdapter):
         self.collections = {}
 
     def _get_collection(self, name: str):
-        """
-        Create or fetch a named collection (e.g., 'facts', 'history', 'summaries').
-        """
         if name not in self.collections:
             self.collections[name] = self.client.get_or_create_collection(
                 name=name, embedding_function=self.embedding_fn
             )
         return self.collections[name]
+    
+    # TODO: add document knowledge ingestion - pymupdf, text types -> chroma upsert in "knowledge" collection
+    def store_knowledge(self):
+        pass
 
-    def store_turn(self, conversation_id: str, turn: Turn, collection_name: str = "history"):
+    def store_turn(self, conversation_id: str, turn: Turn, collection_name: str = "memory"):
         """
-        Store a turn in the specified collection.
+        Store a single turn (request + response as separate docs).
+        """
+        self.store_batch(conversation_id, [turn], collection_name=collection_name)
+
+    def store_batch(self, conversation_id: str, turns: List[Turn], collection_name: str = "history"):
+        """
+        Store multiple turns at once (useful for resync / rebuild).
         """
         collection = self._get_collection(collection_name)
 
-        # TODO: should I add request and response as separate docs or combined. starting with separate ??
-        docs = [
-            {
-                "id": f"{turn.uuid}_req",
-                "text": turn.request.to_memory_string(),
-                "metadata": {
+        docs, ids, metas = [], [], []
+        for turn in turns:
+            for suffix, msg in [("req", turn.request), ("res", turn.response)]:
+                ids.append(f"{turn.uuid}_{suffix}")
+                docs.append(msg.to_memory_string())
+                metas.append({
                     "conversation_id": conversation_id,
-                    "role": turn.request.role,
-                    "speaker": turn.request.speaker,
-                    "timestamp": turn.request.timestamp,
-                    "tags": turn.request.tags,
-                },
-            },
-            {
-                "id": f"{turn.uuid}_res",
-                "text": turn.response.to_memory_string(),
-                "metadata": {
-                    "conversation_id": conversation_id,
-                    "role": turn.response.role,
-                    "speaker": turn.response.speaker,
-                    "timestamp": turn.response.timestamp,
-                    "tags": turn.response.tags,
-                },
-            }
-        ]
+                    "role": msg.role,
+                    "speaker": msg.speaker,
+                    "timestamp": msg.timestamp,
+                    "tags": msg.tags,
+                })
 
-        collection.add(
-            documents=[doc["text"] for doc in docs],
-            ids=[doc["id"] for doc in docs],
-            metadatas=[doc["metadata"] for doc in docs]
-        )
+        collection.add(documents=docs, ids=ids, metadatas=metas)
 
-    def retrieve(self, query: str, top_k: int = 5, collection_name: str = "history") -> List[dict]:
+    def retrieve(self, collection_name: str, query: str, top_k: int = 10) -> List[Message]:
         """
-        Retrieve semantically relevant docs from a collection.
-        Returns metadata + content.
+        Retrieve semantically relevant messages (normalized to Message schema).
         """
         collection = self._get_collection(collection_name)
         results = collection.query(query_texts=[query], n_results=top_k)
 
-        retrieved = []
-        for doc, meta in zip(results["documents"][0], results["metadatas"][0]):
-            retrieved.append({"text": doc, "metadata": meta})
-        return retrieved
+        messages = []
+        for text, meta in zip(results["documents"][0], results["metadatas"][0]):
+            messages.append(
+                Message(
+                    uuid=str(uuid4()),  # new id for retrieved pseudo-message
+                    role=meta.get("role", "unknown"),
+                    speaker=meta.get("speaker", "unknown"),
+                    content=text,
+                    timestamp=meta.get("timestamp", datetime.now().strftime('%Y-%m-%d @ %H:%M')),
+                    tags=meta.get("tags", []),
+                )
+            )
+        return messages
 
 
 class YamlMemoryAdapter(MemoryAdapter):
+    """
+    Thin wrapper: delegates persistence to Conversation's YAML methods.
+    """
+
     def __init__(self, filepath: str):
         self.filepath = filepath
 
     def store_turn(self, conversation_id: str, turn: Turn):
-        turn_dict = turn.to_dict()
+        # Load conversation, append turn, save back
+        convo = Conversation.load_from_yaml(self.filepath, conversation_id)
+        convo.turns.append(turn)
+        convo.last_active = turn.response.timestamp
+        convo.save_to_yaml(self.filepath)
 
-        with open(self.filepath, 'r') as file:
-            data = yaml.safe_load(file) or {"conversations": []}
-
-        conversation = next((c for c in data["conversations"] if c["uuid"] == conversation_id), None)
-        if conversation:
-            conversation["turns"].append(turn_dict)
-            conversation["last_active"] = turn_dict["response"]["timestamp"]
-        else:
-            conversation = {
-                "uuid": conversation_id,
-                "created_at": turn_dict["request"]["timestamp"],
-                "last_active": turn_dict["response"]["timestamp"],
-                "turns": [turn_dict]
-            }
-            data["conversations"].append(conversation)
-
-        with open(self.filepath, 'w') as file:
-            yaml.safe_dump(data, file)
-        
-    def load_conversation_by_id(self, conversation_id):
-        pass
+    def load_conversation_by_id(self, conversation_id: str) -> Optional[Conversation]:
+        try:
+            return Conversation.load_from_yaml(self.filepath, conversation_id)
+        except Exception:
+            return None
 
     def retrieve(self, query: str, top_k: int = 10) -> List[Turn]:
         """
-        Naive retrieval: scan YAML conversations and return last K turns.
+        Naive retrieval: return last N turns across all conversations.
         """
-        with open(self.filepath, 'r') as file:
-            data = yaml.safe_load(file) or {"conversations": []}
+        with open(self.filepath, "r") as f:
+            data = yaml.safe_load(f) or []
 
         turns = []
-        for convo in data["conversations"]:
-            for turn in convo.get("turns", []):
-                turns.append(turn)
-
+        for convo in data:
+            for t in convo.get("turns", []):
+                turns.append(
+                    Turn(
+                        uuid=t["uuid"],
+                        conversation_id=convo["uuid"],
+                        turn_number=t.get("turn_number", len(turns) + 1),
+                        request=Message(**t["request"]),
+                        response=Message(**t["response"]),
+                    )
+                )
         return turns[-top_k:]
-

@@ -38,13 +38,13 @@ class Turn:
     def to_dict(self):
         return asdict(self)
 
-    def to_context_string(self) -> dict:
+    def to_memory_string(self) -> dict:
         """
-        Convert a turn to a context and prompt friendly format.
+        Convert a turn to a prompt friendly format.
         """
         return {
-            "request": self.request.to_prompt_message_string(),
-            "response": self.response.to_prompt_message_string(),
+            "request": self.request.to_memory_string(),
+            "response": self.response.to_memory_string(),
         }
 
 
@@ -60,30 +60,75 @@ class Conversation:
     guest_is_bot: bool
     turns: List[Turn] = field(default_factory=list)
 
-    def to_dict(self):
-        return asdict(self)
-    
     def create_turn(self, request: Message, response: Message) -> Turn:
         turn = Turn(uuid=str(uuid4()), request=request, response=response)
         self.turns.append(turn)
         self.last_active = response.timestamp
         return turn
 
+    def to_dict(self):
+        return {
+            **asdict(self),
+            "turns": [
+                {
+                    **asdict(turn),
+                    "request": asdict(turn.request),
+                    "response": asdict(turn.response)
+                } for turn in self.turns
+            ]
+        }
 
-def start_new_conversation(host: str, host_is_bot: bool, guest: str, guest_is_bot: bool) -> Conversation:
-    conversation = Conversation(
-        uuid=str(uuid4()),
-        description= f"{host}-{guest}",
-        created_at=datetime.now().strftime('%Y-%m-%d @ %H:%M'),
-        last_active=datetime.now().strftime('%Y-%m-%d @ %H:%M'),
-        host=host,
-        host_is_bot=host_is_bot,
-        guest=guest,
-        guest_is_bot=guest_is_bot,
-        turns=[]
-    )
-    print(f"New conversation {conversation.uuid} started!")
-    return conversation
+    def save_to_yaml(self, yaml_path: str):
+        try:
+            # Load existing conversations if file exists
+            with open(yaml_path, 'r') as f:
+                data = yaml.safe_load(f) or []
+        except FileNotFoundError:
+            data = []
+
+        # Remove any previous entry with same uuid
+        data = [c for c in data if c['uuid'] != self.uuid]
+        data.append(self.to_dict())
+
+        with open(yaml_path, 'w') as f:
+            yaml.safe_dump(data, f)
+        print(f"Conversation {self.uuid} saved to {yaml_path}.")
+
+    @classmethod
+    def start_new(cls, host: str, host_is_bot: bool, guest: str, guest_is_bot: bool) -> "Conversation":
+        now = datetime.now().strftime('%Y-%m-%d @ %H:%M')
+        conversation = cls(
+            uuid=str(uuid4()),
+            description=f"{host}-{guest}",
+            created_at=now,
+            last_active=now,
+            host=host,
+            host_is_bot=host_is_bot,
+            guest=guest,
+            guest_is_bot=guest_is_bot,
+            turns=[]
+        )
+        print(f"New conversation {conversation.uuid} started!")
+        return conversation
+
+    @classmethod
+    def load_from_yaml(cls, yaml_path: str, conversation_id: str) -> "Conversation":
+        with open(yaml_path, 'r') as f:
+            data = yaml.safe_load(f) or []
+
+        conv_data = next((c for c in data if c['uuid'] == conversation_id), None)
+        if not conv_data:
+            raise ValueError(f"No conversation with id {conversation_id} found")
+
+        conv_data['turns'] = [
+            Turn(
+                uuid=t['uuid'],
+                request=Message(**t['request']),
+                response=Message(**t['response'])
+            ) for t in conv_data.get('turns', [])
+        ]
+
+        return cls(**conv_data)
 
 
 class MessageCache:
@@ -108,7 +153,7 @@ class MessageCache:
         if as_strings:
             history = []
             for turn in self.cache:
-                history.append(turn.request.to_prompt_message_string())
-                history.append(turn.response.to_prompt_message_string())
+                history.append(turn.request.to_memory_string())
+                history.append(turn.response.to_memory_string())
             return history
         return list(self.cache)
