@@ -9,14 +9,14 @@ from messages import Conversation, Message, Turn
 
 def format_chat_history(chat_history: list):
     """
-    Formats the chat history for display.
+    Formats the chat history for display. This didn't really solve anything..
     """
     formatted_history = ''.join(chat_history)
     formatted_history = formatted_history.replace('\n\n', '\n')
 
     return formatted_history
 
-
+# TODO: Do i even need this??? If i return the list of strings from the other side then I can just push that directly into the prompt content string
 def message_cache_format_to_prompt(message_history):
     chat_history = []
     for turn in message_history:
@@ -66,12 +66,14 @@ class ChromaMemoryAdapter(MemoryAdapter):
 
     def store_turn(self, conversation_id: str, turn: Turn, collection_name: str = "memory"):
         """
+        NOT TESTED
         Store a single turn (request + response as separate docs).
         """
         self.store_batch(conversation_id, [turn], collection_name=collection_name)
 
     def store_batch(self, conversation_id: str, turns: List[Turn], collection_name: str = "history"):
         """
+        NOT TESTED
         Store multiple turns at once (useful for resync / rebuild).
         """
         collection = self._get_collection(collection_name)
@@ -93,6 +95,7 @@ class ChromaMemoryAdapter(MemoryAdapter):
 
     def retrieve(self, collection_name: str, query: str, top_k: int = 10) -> List[Message]:
         """
+        NOT TESTED
         Retrieve semantically relevant messages (normalized to Message schema).
         """
         collection = self._get_collection(collection_name)
@@ -102,7 +105,7 @@ class ChromaMemoryAdapter(MemoryAdapter):
         for text, meta in zip(results["documents"][0], results["metadatas"][0]):
             messages.append(
                 Message(
-                    uuid=str(uuid4()),  # new id for retrieved pseudo-message
+                    uuid=str(uuid4()),
                     role=meta.get("role", "unknown"),
                     speaker=meta.get("speaker", "unknown"),
                     content=text,

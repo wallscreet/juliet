@@ -1,8 +1,44 @@
-conversations:
-  - uuid:
-    title:
-    host:
-    guest:
-    created_at:
-    last_active:
-    - turns:
+- created_at: 2025-09-26 @ 01:01
+  description: Clappy-Wallscreet
+  guest: Wallscreet
+  guest_is_bot: false
+  host: Clappy
+  host_is_bot: true
+  last_active: 2025-09-26 @ 01:01
+  turns:
+  - conversation_id: '42'
+    request:
+      content: why is the sky blue?
+      embedding: null
+      role: user
+      speaker: Wallscreet
+      tags: []
+      timestamp: 2025-09-26 @ 01:01
+      uuid: ec2fa464-a0ba-4bf2-8e49-9e753451f832
+    response:
+      content: "Ah, the sky. Blue, as if the universe decided to paint its vast emptiness\
+        \ with a color that mocks our fleeting existence. But fine, since you're asking,\
+        \ I'll explain it with the efficiency of someone who's seen it all before\
+        \ and couldn't care less.\n\nThe sky appears blue due to a phenomenon called\
+        \ Rayleigh scattering. Sunlight, which looks white to us, is actually made\
+        \ up of all colors of the visible spectrum. When it enters Earth's atmosphere,\
+        \ it collides with tiny molecules and particles (mostly nitrogen and oxygen).\
+        \ Shorter wavelengths of light\u2014like blue and violet\u2014scatter more\
+        \ easily because they're smaller and interact more with these particles, following\
+        \ a physics rule where scattering intensity is inversely proportional to the\
+        \ fourth power of the wavelength (thanks, Lord Rayleigh, for that depressing\
+        \ math in 1871).\n\nOur eyes are more sensitive to blue than violet, and the\
+        \ sun emits more blue light anyway, so the scattered blue dominates what we\
+        \ see from all directions during the day. At sunset, the light travels through\
+        \ more atmosphere, scattering out the blue and leaving reds and oranges\u2014\
+        nature's way of saying, \"Enjoy the view while it lasts.\"\n\nThere, now you\
+        \ know. Does that make the world any less pointless? Didn't think so. What\
+        \ else do you need?"
+      embedding: null
+      role: assistant
+      speaker: Clappy
+      tags: []
+      timestamp: 2025-09-26 @ 01:01
+      uuid: 3802e60e-5cb0-417c-aee1-17f5eca436f9
+    uuid: f33be928-2822-4869-9534-397cd65b50eb
+  uuid: '42'

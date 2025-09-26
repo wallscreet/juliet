@@ -28,11 +28,13 @@ class ModelInstructions:
     chat_start_token: str = None
     chat_end_token: str = None
     completions_url: str = None
+    conversations_filepath: str = None
 
     def __init__(self, method: str, assistant_name: str = None) -> None:
         """
         Model instructions init takes a method param as ['create', 'load'] to determine if the instructions should be loaded from a yaml file or created from the CLI.
         """
+        self.conversations_filepath = f"isos/{assistant_name.lower()}/conversations.yaml"
         if method == 'load':
             if assistant_name:
                 self.load_from_yaml(assistant_name)

@@ -36,6 +36,9 @@ class LLMClient(ABC):
 
 @dataclass
 class XAIClient(LLMClient):
+    """
+    ok TESTED
+    """
     api_key: str = os.getenv("XAI_API_KEY")
     base_url: str = "https://api.x.ai/v1"
 
@@ -89,6 +92,10 @@ class XAIClient(LLMClient):
 
 @dataclass
 class OllamaClient(LLMClient):
+    """
+    NOT TESTED
+    The ollama docs say I can use the openai sdk and use the v1 endpoint.
+    """
     base_url: str = "http://localhost:11434/v1"
     api_key: str = "ollama"
 
@@ -120,6 +127,9 @@ class OllamaClient(LLMClient):
 
 @dataclass
 class OpenAIClient(LLMClient):
+    """
+    NOT TESTED
+    """
     api_key: str = os.getenv("OPENAI_API_KEY")
 
     def __post_init__(self):
@@ -196,13 +206,14 @@ class IsoClient:
         return self.llm_client.get_response(model=model, messages=prompt)
 
 
-
+# The ais are pretty insistent on using these abstract base classes.
 class ChatClient(ABC):
     @abstractmethod
     def chat_loop(self):
         pass
 
 
+# TODO: Need a cli chat client pretty bad!
 class CliChatClient(ChatClient):
     def __init__(self):
         pass

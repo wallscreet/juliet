@@ -8,7 +8,7 @@ import yaml
 
 @dataclass
 class Message:
-    uuid: str
+    uuid: str # The uuid may actually be arbitrary here
     role: str
     speaker: str
     content: str
@@ -31,7 +31,6 @@ class Message:
 class Turn:
     uuid: str
     conversation_id: str
-    turn_number: int
     request: Message
     response: Message
 
@@ -60,10 +59,11 @@ class Conversation:
     guest_is_bot: bool
     turns: List[Turn] = field(default_factory=list)
 
-    def create_turn(self, request: Message, response: Message) -> Turn:
-        turn = Turn(uuid=str(uuid4()), request=request, response=response)
+    def create_turn(self, conversation_id: str, request: Message, response: Message) -> Turn:
+        turn = Turn(uuid=str(uuid4()), request=request, response=response, conversation_id=conversation_id)
         self.turns.append(turn)
         self.last_active = response.timestamp
+        
         return turn
 
     def to_dict(self):
@@ -86,7 +86,7 @@ class Conversation:
         except FileNotFoundError:
             data = []
 
-        # Remove any previous entry with same uuid
+        # overwrite entry with same uuid??
         data = [c for c in data if c['uuid'] != self.uuid]
         data.append(self.to_dict())
 
@@ -95,10 +95,10 @@ class Conversation:
         print(f"Conversation {self.uuid} saved to {yaml_path}.")
 
     @classmethod
-    def start_new(cls, host: str, host_is_bot: bool, guest: str, guest_is_bot: bool) -> "Conversation":
+    def start_new(cls, host: str, host_is_bot: bool, guest: str, guest_is_bot: bool, uuid_override: Optional[str] = None) -> "Conversation":
         now = datetime.now().strftime('%Y-%m-%d @ %H:%M')
         conversation = cls(
-            uuid=str(uuid4()),
+            uuid=uuid_override or str(uuid4()),
             description=f"{host}-{guest}",
             created_at=now,
             last_active=now,
@@ -108,7 +108,7 @@ class Conversation:
             guest_is_bot=guest_is_bot,
             turns=[]
         )
-        print(f"New conversation {conversation.uuid} started!")
+        print(f"New conversation {conversation.description} | {conversation.uuid} started!")
         return conversation
 
     @classmethod
@@ -131,6 +131,7 @@ class Conversation:
         return cls(**conv_data)
 
 
+# TODO: this message cache get chat history will output a different format than expected. should probably refactor this to return the turns and messages or the other side to take the list of strings.
 class MessageCache:
     """
     A bounded short-term memory buffer (e.g. last N turns).
