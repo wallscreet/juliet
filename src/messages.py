@@ -25,6 +25,9 @@ class Message:
 
     def to_memory_string(self) -> str:
         return f"{self.speaker} @ {self.timestamp}: {self.content}"
+    
+    def to_content_string(self) -> str:
+        return f"{self.content}"
 
 
 @dataclass
@@ -46,7 +49,6 @@ class Turn:
             "response": self.response.to_memory_string(),
         }
 
-
 @dataclass
 class Conversation:
     uuid: str
@@ -59,11 +61,15 @@ class Conversation:
     guest_is_bot: bool
     turns: List[Turn] = field(default_factory=list)
 
-    def create_turn(self, conversation_id: str, request: Message, response: Message) -> Turn:
-        turn = Turn(uuid=str(uuid4()), request=request, response=response, conversation_id=conversation_id)
+    def create_turn(self, request: Message, response: Message) -> Turn:
+        turn = Turn(
+            uuid=str(uuid4()),
+            request=request,
+            response=response,
+            conversation_id=self.uuid
+        )
         self.turns.append(turn)
         self.last_active = response.timestamp
-        
         return turn
 
     def to_dict(self):
@@ -78,21 +84,19 @@ class Conversation:
             ]
         }
 
-    def save_to_yaml(self, yaml_path: str):
-        try:
-            # Load existing conversations if file exists
-            with open(yaml_path, 'r') as f:
-                data = yaml.safe_load(f) or []
-        except FileNotFoundError:
-            data = []
-
-        # overwrite entry with same uuid??
-        data = [c for c in data if c['uuid'] != self.uuid]
-        data.append(self.to_dict())
-
-        with open(yaml_path, 'w') as f:
-            yaml.safe_dump(data, f)
-        print(f"Conversation {self.uuid} saved to {yaml_path}.")
+    @classmethod
+    def from_dict(cls, data: dict) -> "Conversation":
+        turns = [
+            Turn(
+                uuid=t['uuid'],
+                request=Message(**t['request']),
+                response=Message(**t['response']),
+                conversation_id=data['uuid']
+            )
+            for t in data.get('turns', [])
+        ]
+        data = {**data, "turns": turns}
+        return cls(**data)
 
     @classmethod
     def start_new(cls, host: str, host_is_bot: bool, guest: str, guest_is_bot: bool, uuid_override: Optional[str] = None) -> "Conversation":
@@ -111,27 +115,7 @@ class Conversation:
         print(f"New conversation {conversation.description} | {conversation.uuid} started!")
         return conversation
 
-    @classmethod
-    def load_from_yaml(cls, yaml_path: str, conversation_id: str) -> "Conversation":
-        with open(yaml_path, 'r') as f:
-            data = yaml.safe_load(f) or []
 
-        conv_data = next((c for c in data if c['uuid'] == conversation_id), None)
-        if not conv_data:
-            raise ValueError(f"No conversation with id {conversation_id} found")
-
-        conv_data['turns'] = [
-            Turn(
-                uuid=t['uuid'],
-                request=Message(**t['request']),
-                response=Message(**t['response'])
-            ) for t in conv_data.get('turns', [])
-        ]
-
-        return cls(**conv_data)
-
-
-# TODO: this message cache get chat history will output a different format than expected. should probably refactor this to return the turns and messages or the other side to take the list of strings.
 class MessageCache:
     """
     A bounded short-term memory buffer (e.g. last N turns).

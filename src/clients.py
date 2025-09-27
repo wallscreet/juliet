@@ -2,13 +2,12 @@ from dataclasses import dataclass
 from typing import List
 from abc import ABC, abstractmethod
 import os
-from uuid import uuid4
 from pydantic import BaseModel
 from openai import OpenAI
 from dotenv import load_dotenv
 from instructions import ModelInstructions
 from messages import MessageCache
-from context import ChromaMemoryAdapter, message_cache_format_to_prompt
+from context import ChromaMemoryAdapter
 
 
 load_dotenv()
@@ -174,7 +173,7 @@ class IsoClient:
     Iso agent class that combines instructions, parameters, LLM client, and memory. Responsible for building prompts dynamically, handling context, and generating responses.
     """
 
-    def __init__(self, llm_client: LLMClient, instructions: ModelInstructions, cache_capacity: int = 20):
+    def __init__(self, llm_client: LLMClient, instructions: ModelInstructions, cache_capacity: int = 40):
         self.llm_client = llm_client
         self.instructions = instructions
         self.message_cache = MessageCache(capacity=cache_capacity)
@@ -183,11 +182,13 @@ class IsoClient:
     def build_prompt(self, user_input: str):
         # chat history
         chat_history = self.message_cache.get_chat_history()
-        chat_history_formatted = message_cache_format_to_prompt(message_history=chat_history)
-        #print(f"Message Cache Formatted: {chat_history_formatted}")
+        #print(f"Chat History: {chat_history}")
         
         # memory context
         memory_context = self.memory.retrieve(collection_name="memory", query=user_input)
+        memory_context_formatted = []
+        for message in memory_context:
+            memory_context_formatted.append(message.to_content_string())
         #print(f"Memory Context: {memory_context}")
 
         # knowledge context
@@ -195,14 +196,14 @@ class IsoClient:
         #print(f"Knowledge Context: {knowledge_context}")
         
         # return instructions to prompt script
-        messages = self.instructions.to_prompt_script(mem_context=memory_context, knowledge_context=knowledge_context, chat_history=chat_history_formatted, user_request=user_input)
+        messages = self.instructions.to_prompt_script(mem_context=memory_context_formatted, knowledge_context=knowledge_context, chat_history=chat_history, user_request=user_input)
         
         return messages
     
     def generate_response(self, model: str, user_input: str):
         # create request and response messages and add to message cache
         prompt = self.build_prompt(user_input=user_input)
-        print(f"\n===== PROMPT =====\n{prompt}\n\n")
+        #print(f"\n===== PROMPT =====\n{prompt}\n\n")
         return self.llm_client.get_response(model=model, messages=prompt)
 
 

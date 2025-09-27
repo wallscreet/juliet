@@ -5,6 +5,7 @@ import chromadb
 from chromadb.utils import embedding_functions
 import yaml
 from messages import Conversation, Message, Turn
+import json
 
 
 def format_chat_history(chat_history: list):
@@ -72,10 +73,6 @@ class ChromaMemoryAdapter(MemoryAdapter):
         self.store_batch(conversation_id, [turn], collection_name=collection_name)
 
     def store_batch(self, conversation_id: str, turns: List[Turn], collection_name: str = "history"):
-        """
-        NOT TESTED
-        Store multiple turns at once (useful for resync / rebuild).
-        """
         collection = self._get_collection(collection_name)
 
         docs, ids, metas = [], [], []
@@ -88,7 +85,7 @@ class ChromaMemoryAdapter(MemoryAdapter):
                     "role": msg.role,
                     "speaker": msg.speaker,
                     "timestamp": msg.timestamp,
-                    "tags": msg.tags,
+                    #"tags": json.dumps(msg.tags) if msg.tags else None,
                 })
 
         collection.add(documents=docs, ids=ids, metadatas=metas)
@@ -117,33 +114,41 @@ class ChromaMemoryAdapter(MemoryAdapter):
 
 
 class YamlMemoryAdapter(MemoryAdapter):
-    """
-    Thin wrapper: delegates persistence to Conversation's YAML methods.
-    """
-
     def __init__(self, filepath: str):
         self.filepath = filepath
 
-    def store_turn(self, conversation_id: str, turn: Turn):
-        # Load conversation, append turn, save back
-        convo = Conversation.load_from_yaml(self.filepath, conversation_id)
-        convo.turns.append(turn)
-        convo.last_active = turn.response.timestamp
-        convo.save_to_yaml(self.filepath)
+    def _load_all(self) -> List[dict]:
+        try:
+            with open(self.filepath, "r") as f:
+                return yaml.safe_load(f) or []
+        except FileNotFoundError:
+            return []
+
+    def _save_all(self, data: List[dict]):
+        with open(self.filepath, "w") as f:
+            yaml.safe_dump(data, f)
+
+    def save_conversation(self, convo: Conversation):
+        data = self._load_all()
+        data = [c for c in data if c['uuid'] != convo.uuid]
+        data.append(convo.to_dict())
+        self._save_all(data)
 
     def load_conversation_by_id(self, conversation_id: str) -> Optional[Conversation]:
-        try:
-            return Conversation.load_from_yaml(self.filepath, conversation_id)
-        except Exception:
-            return None
+        data = self._load_all()
+        conv_data = next((c for c in data if c['uuid'] == conversation_id), None)
+        return Conversation.from_dict(conv_data) if conv_data else None
+
+    def store_turn(self, conversation_id: str, turn: Turn):
+        convo = self.load_conversation_by_id(conversation_id)
+        if not convo:
+            raise ValueError(f"No conversation {conversation_id}")
+        convo.turns.append(turn)
+        convo.last_active = turn.response.timestamp
+        self.save_conversation(convo)
 
     def retrieve(self, query: str, top_k: int = 10) -> List[Turn]:
-        """
-        Naive retrieval: return last N turns across all conversations.
-        """
-        with open(self.filepath, "r") as f:
-            data = yaml.safe_load(f) or []
-
+        data = self._load_all()
         turns = []
         for convo in data:
             for t in convo.get("turns", []):
@@ -151,9 +156,36 @@ class YamlMemoryAdapter(MemoryAdapter):
                     Turn(
                         uuid=t["uuid"],
                         conversation_id=convo["uuid"],
-                        turn_number=t.get("turn_number", len(turns) + 1),
                         request=Message(**t["request"]),
                         response=Message(**t["response"]),
+                        turn_number=t.get("turn_number", len(turns) + 1),
                     )
                 )
         return turns[-top_k:]
+
+
+class ConversationManager:
+    def __init__(self, adapter: YamlMemoryAdapter):
+        self.adapter = adapter
+
+    def get_or_start(self, conversation_id: str, host: str, host_is_bot: bool, guest: str, guest_is_bot: bool) -> Conversation:
+        convo = self.adapter.load_conversation_by_id(conversation_id)
+        if convo:
+            print(f"Loaded existing conversation {convo.uuid}")
+            return convo
+
+        # start new one if not found
+        convo = Conversation.start_new(
+            host=host,
+            host_is_bot=host_is_bot,
+            guest=guest,
+            guest_is_bot=guest_is_bot,
+            uuid_override=conversation_id,
+        )
+        self.adapter.save_conversation(convo)
+        return convo
+
+    def add_turn(self, convo: Conversation, request: Message, response: Message) -> Turn:
+        turn = convo.create_turn(request=request, response=response)
+        self.adapter.store_turn(conversation_id=convo.uuid, turn=turn)
+        return turn
