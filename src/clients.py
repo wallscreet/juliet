@@ -57,6 +57,7 @@ class XAIClient(LLMClient):
                 model=model,
                 messages=messages,
             )
+            print(f"Tokens Usage:\n{completion.usage}\n")
             return completion.choices[0].message.content
 
         except Exception as e:

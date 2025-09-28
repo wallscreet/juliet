@@ -43,8 +43,8 @@ def main():
 
     # ==== Chat loop ====
     while True:
-        user_input = input("User Input: ")
-
+        user_input = input("\nUser Input: ")
+        
         response = iso_client.generate_response(
             model="grok-4-fast-non-reasoning",
             user_input=user_input,
@@ -69,7 +69,7 @@ def main():
         iso_client.message_cache.add_turn(turn=turn)
         chroma_adapter.store_turn(conversation_id=conversation_id, turn=turn)
 
-        print(f"Response: {response}")
+        print(f"\nResponse: {response}")
 
 
 

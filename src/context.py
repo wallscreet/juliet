@@ -5,7 +5,7 @@ import chromadb
 from chromadb.utils import embedding_functions
 import yaml
 from messages import Conversation, Message, Turn
-import json
+import pymupdf
 
 
 def format_chat_history(chat_history: list):
@@ -61,18 +61,25 @@ class ChromaMemoryAdapter(MemoryAdapter):
             )
         return self.collections[name]
     
+    def _delete_collection(self, name: str):
+        self.client.delete_collection(name=name)
+        print(f"Collection {name} has been deleted.")
+    
     # TODO: add document knowledge ingestion - pymupdf, text types -> chroma upsert in "knowledge" collection
     def store_knowledge(self):
         pass
 
     def store_turn(self, conversation_id: str, turn: Turn, collection_name: str = "memory"):
         """
-        NOT TESTED
+        ok TESTED
         Store a single turn (request + response as separate docs).
         """
         self.store_batch(conversation_id, [turn], collection_name=collection_name)
 
     def store_batch(self, conversation_id: str, turns: List[Turn], collection_name: str = "history"):
+        """
+        ok TESTED
+        """
         collection = self._get_collection(collection_name)
 
         docs, ids, metas = [], [], []
@@ -92,7 +99,7 @@ class ChromaMemoryAdapter(MemoryAdapter):
 
     def retrieve(self, collection_name: str, query: str, top_k: int = 10) -> List[Message]:
         """
-        NOT TESTED
+        ok TESTED
         Retrieve semantically relevant messages (normalized to Message schema).
         """
         collection = self._get_collection(collection_name)
