@@ -6,8 +6,8 @@ from context import Conversation, Message
 from uuid import uuid4
 
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Input, TextArea
-from textual.containers import Container
+from textual.widgets import Header, Footer, Input, Markdown
+from textual.containers import Container, VerticalScroll
 
 
 class JulietChat(App):
@@ -15,6 +15,10 @@ class JulietChat(App):
     #history {
         border: round orange;
         padding: 1;
+    }
+
+    .message {
+        margin: 1 0;
     }
 
     #user_input {
@@ -61,31 +65,30 @@ class JulietChat(App):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield Container(
-            TextArea(id="history", read_only=True),
+            VerticalScroll(id="history"),
             Input(placeholder="Type your message here...", id="user_input"),
         )
         yield Footer()
 
     def on_mount(self) -> None:
-        self.history = self.query_one("#history", TextArea)
+        self.history = self.query_one("#history", VerticalScroll)
         self.user_input = self.query_one("#user_input", Input)
         self.user_input.focus()
 
         for turn in self.conversation.turns:
-            self._add_to_history(f"\n{turn.request.speaker}:\n{turn.request.content}\n\n")
-            self._add_to_history(f"{turn.response.speaker}:\n{turn.response.content}\n\n-----------------------------------------------------\n")
+            self._add_to_history(f"**{turn.request.speaker}:**\n{turn.request.content}\n")
+            self._add_to_history(f"**{turn.response.speaker}:**\n{turn.response.content}\n\n---")
 
     def _add_to_history(self, text: str) -> None:
-        self.history.text += text
-        self.history.cursor_location = (self.history.document.line_count - 1, 0)
-        self.history.scroll_to(self.history.cursor_location, animate=True)
+        self.history.mount(Markdown(text, classes="message"))
+        self.history.scroll_end(animate=True)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         user_input = event.value.strip()
         if not user_input:
             return
 
-        self._add_to_history(f"\nWallscreet:\n{user_input}\n\n")
+        self._add_to_history(f"**Wallscreet:**\n{user_input}")
         self.user_input.value = ""
 
         response = self.iso_client.generate_response(
@@ -112,7 +115,7 @@ class JulietChat(App):
         self.iso_client.message_cache.add_turn(turn=turn)
         self.chroma_adapter.store_turn(conversation_id=self.conversation_id, turn=turn)
 
-        self._add_to_history(f"{self.instructions.name}:\n{response}\n\n-----------------------------------------------------\n")
+        self._add_to_history(f"**{self.instructions.name}:**\n{response}\n\n---")
 
 
 if __name__ == "__main__":
