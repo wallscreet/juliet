@@ -124,11 +124,12 @@ class ModelInstructions:
         """
         print(f"Iso Configuration:\n{self.to_dict()}")
     
-    def to_prompt_script(self, mem_context: Optional[List[str]], knowledge_context: Optional[List[str]], chat_history: Optional[List[str]], user_request: str) -> List[Dict[str, str]]:
+    def to_prompt_script(self, facts_context: Optional[List[str]], mem_context: Optional[List[str]], knowledge_context: Optional[List[str]], chat_history: Optional[List[str]], user_request: str) -> List[Dict[str, str]]:
         """
         Export instructions class as a prompt template.
         """
 
+        facts_context_str = "\n".join(facts_context) if facts_context else "No related Facts found"
         mem_context_str = "\n".join(mem_context) if mem_context else "No related memories"
         knowledge_context_str = "\n".join(knowledge_context) if knowledge_context else "No related knowledge"
         chat_history_str = "\n".join(chat_history) if chat_history else "No chat history"
@@ -137,6 +138,7 @@ class ModelInstructions:
             {"role": "system", "content": f"{self.system_message}"},
             {"role": "assistant", "content": f"{self.assistant_intro}"},
             {"role": "user", "content": f"Your current focus should be: {self.assistant_focus}"},
+            {"role": "system", "content": f"Facts from your Facts Table:\n{facts_context_str}"},
             {"role": "system", "content": f"Request context from your memory:\n{mem_context_str}"},
             {"role": "system", "content": f"Request context from your knowledge base:\n{knowledge_context_str}"},
             {"role": "system", "content": f"Conversation chat history:\n{chat_history_str}"},

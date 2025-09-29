@@ -6,8 +6,9 @@ from context import Conversation, Message
 from uuid import uuid4
 
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Input, Markdown
+from textual.widgets import Header, Footer, Markdown, TextArea
 from textual.containers import Container, VerticalScroll
+from textual.binding import Binding
 
 
 class JulietChat(App):
@@ -24,8 +25,13 @@ class JulietChat(App):
     #user_input {
         border: round blue;
         margin-top: 0;
+        height: 5;
     }
     """
+
+    BINDINGS = [
+        Binding("alt+enter", "send_message", "Send Message", show=True),
+    ]
 
     def __init__(self):
         super().__init__()
@@ -66,14 +72,19 @@ class JulietChat(App):
         yield Header(show_clock=True)
         yield Container(
             VerticalScroll(id="history"),
-            Input(placeholder="Type your message here...", id="user_input"),
+            TextArea(placeholder="Type your message here... (Ctrl+Enter to send)", id="user_input"),
         )
         yield Footer()
 
     def on_mount(self) -> None:
         self.history = self.query_one("#history", VerticalScroll)
-        self.user_input = self.query_one("#user_input", Input)
+        self.user_input = self.query_one("#user_input", TextArea)
         self.user_input.focus()
+
+        # Override TextArea's default Ctrl+Enter binding
+        self.user_input.bindings = [
+            Binding("ctrl+enter", "app.send_message", "Send Message", show=False)
+        ]
 
         for turn in self.conversation.turns:
             self._add_to_history(f"**{turn.request.speaker}:**\n{turn.request.content}\n")
@@ -83,15 +94,16 @@ class JulietChat(App):
         self.history.mount(Markdown(text, classes="message"))
         self.history.scroll_end(animate=True)
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        user_input = event.value.strip()
+    def action_send_message(self) -> None:
+        """Triggered by Ctrl+Enter."""
+        user_input = self.user_input.text.strip()
         if not user_input:
             return
 
         self._add_to_history(f"**Wallscreet:**\n{user_input}")
-        self.user_input.value = ""
+        self.user_input.text = ""
 
-        response = self.iso_client.generate_response(
+        response = self.iso_client.generate_response_with_fact_add(
             model="grok-4-fast-non-reasoning",
             user_input=user_input,
         )

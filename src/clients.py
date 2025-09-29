@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import List
+import json
+from typing import Any, Dict, List
 from abc import ABC, abstractmethod
 import os
 from pydantic import BaseModel
@@ -8,6 +9,7 @@ from dotenv import load_dotenv
 from instructions import ModelInstructions
 from messages import MessageCache
 from context import ChromaMemoryAdapter
+from fact_store import Fact, FactStore
 
 
 load_dotenv()
@@ -86,6 +88,18 @@ class XAIClient(LLMClient):
             )
             return completion.choices[0].message.parsed
         
+        except Exception as e:
+            print(f"Error: {e}")
+    
+    def get_response_with_tools(self, model: str, messages: list, tools: list = None):
+        try:
+            completion = self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                tools=tools,
+            )
+            print(f"Tokens Usage:\n{completion.usage}\n")
+            return completion.choices[0].message
         except Exception as e:
             print(f"Error: {e}")
 
@@ -174,11 +188,12 @@ class IsoClient:
     Iso agent class that combines instructions, parameters, LLM client, and memory. Responsible for building prompts dynamically, handling context, and generating responses.
     """
 
-    def __init__(self, llm_client: LLMClient, instructions: ModelInstructions, cache_capacity: int = 40):
+    def __init__(self, llm_client: XAIClient, instructions: ModelInstructions, cache_capacity: int = 40, fact_store_path: str = "facts.yaml"):
         self.llm_client = llm_client
         self.instructions = instructions
         self.message_cache = MessageCache(capacity=cache_capacity)
         self.memory = ChromaMemoryAdapter()
+        self.fact_store = FactStore(fact_store_path)
     
     def build_prompt(self, user_input: str):
         # chat history
@@ -195,9 +210,16 @@ class IsoClient:
         # knowledge context
         knowledge_context = self.memory.retrieve(collection_name="knowledge", query=user_input)
         #print(f"Knowledge Context: {knowledge_context}")
+
+        # facts context
+        facts_context = self.fact_store.retrieve_facts(query=user_input)
+        facts_formatted = []
+        for fact in facts_context:
+            facts_formatted.append(fact.to_memory_string())
+        #print(f"Facts Context: {facts_formatted}")
         
         # return instructions to prompt script
-        messages = self.instructions.to_prompt_script(mem_context=memory_context_formatted, knowledge_context=knowledge_context, chat_history=chat_history, user_request=user_input)
+        messages = self.instructions.to_prompt_script(facts_context=facts_formatted, mem_context=memory_context_formatted, knowledge_context=knowledge_context, chat_history=chat_history, user_request=user_input)
         
         return messages
     
@@ -206,7 +228,46 @@ class IsoClient:
         prompt = self.build_prompt(user_input=user_input)
         #print(f"\n===== PROMPT =====\n{prompt}\n\n")
         return self.llm_client.get_response(model=model, messages=prompt)
-
+    
+    def get_add_fact_tool(self):
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_fact",
+                    "description": "Add a new fact as a subject-predicate-object triple.",
+                    "parameters": Fact.model_json_schema()
+                }
+            }
+        ]
+    
+    def generate_response_with_fact_add(self, model: str, user_input: str):
+        messages = self.build_prompt(user_input)
+        tools = self.get_add_fact_tool()
+        
+        while True:
+            response = self.llm_client.get_response_with_tools(model, messages, tools)
+            
+            if not response.tool_calls:
+                return response.content
+            
+            messages.append(response)
+            
+            for tool_call in response.tool_calls:
+                if tool_call.function.name == "add_fact":
+                    args = json.loads(tool_call.function.arguments)
+                    fact = Fact(**args)
+                    self.fact_store.append_fact(fact)
+                    result = {"status": "fact_added", "fact": args}
+                else:
+                    result = {"status": "unknown_tool"}
+                
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "name": tool_call.function.name,
+                    "content": json.dumps(result)
+                })
 
 # The ais are pretty insistent on using these abstract base classes.
 class ChatClient(ABC):
