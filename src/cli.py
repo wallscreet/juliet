@@ -1,7 +1,7 @@
 import sys
 from context import ChromaMemoryAdapter, ConversationManager, YamlMemoryAdapter
 from instructions import ModelInstructions
-from clients import XAIClient, IsoClient, OllamaClient
+from clients import LLMClient, XAIClient, IsoClient, OllamaClient
 from context import Conversation, Message
 from uuid import uuid4
 
@@ -33,14 +33,14 @@ class JulietChat(App):
         Binding("alt+enter", "send_message", "Send Message", show=True),
     ]
 
-    def __init__(self):
+    def __init__(self, assistant_name: str, llm_client: LLMClient):
         super().__init__()
         self.chroma_adapter = ChromaMemoryAdapter(persist_dir="./chroma_store")
-        self.yaml_adapter = YamlMemoryAdapter(filepath="isos/juliet/conversations.yaml")
+        self.yaml_adapter = YamlMemoryAdapter(filepath=f"isos/{assistant_name.lower()}/conversations.yaml")
         self.manager = ConversationManager(adapter=self.yaml_adapter)
 
-        self.instructions = ModelInstructions(method="load", assistant_name="juliet")
-        self.llm_client = XAIClient()
+        self.instructions = ModelInstructions(method="load", assistant_name=assistant_name.lower())
+        self.llm_client = llm_client
         self.iso_client = IsoClient(llm_client=self.llm_client, instructions=self.instructions)
 
         self.username = input("Username: ")
@@ -94,8 +94,6 @@ class JulietChat(App):
 
     def action_send_message(self) -> None:
         """Triggered by Alt+Enter."""
-        # TODO: Workspace folder - iterate over files and give list or dict of contents. Maybe see if possible to include a tree in the prompt.
-
         user_input = self.user_input.text.strip()
         if not user_input:
             return
@@ -105,7 +103,7 @@ class JulietChat(App):
 
         response, prompt_messages, usage = self.iso_client.generate_response_with_tools(
             model="grok-4-fast-non-reasoning",
-            #model="qwen3",
+            #model="dolphin2.2-mistral",
             user_input=user_input,
         )
         
@@ -137,7 +135,9 @@ class JulietChat(App):
 
 if __name__ == "__main__":
     try:
-        app = JulietChat()
+        llm_client = XAIClient()
+        assistant_name = input("Enter assistant name: ")
+        app = JulietChat(assistant_name=assistant_name, llm_client=llm_client)
         app.run()
     except KeyboardInterrupt:
         sys.exit(0)
