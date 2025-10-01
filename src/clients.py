@@ -10,6 +10,7 @@ from instructions import ModelInstructions
 from messages import MessageCache
 from context import ChromaMemoryAdapter
 from fact_store import Fact, FactStore
+from files_handler import FileCreateRequest, FileEditRequest, FileDeleteRequest, FileHandler
 
 
 load_dotenv()
@@ -34,6 +35,12 @@ class LLMClient(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_response_with_tools(self, model: str, messages: List[dict], temp: float = 0.3, **kwargs) -> str:
+        """
+        Get a response with the tool pipeline included.
+        """
+        pass
 
 @dataclass
 class XAIClient(LLMClient):
@@ -52,7 +59,7 @@ class XAIClient(LLMClient):
     
     def get_response(self, model: str, messages: list = None):
         """
-        Get a response from the Grok AI model.
+        Get a response from an xAi model.
         """
         try:
             completion = self.client.chat.completions.create(
@@ -67,7 +74,7 @@ class XAIClient(LLMClient):
     
     def get_structured_response(self, model: str, response_format: type[BaseModel] = None, content: str = None) -> BaseModel:
         """
-        Get a structured output response from the Grok AI api.
+        Get a structured output response from the xAi api.
         """
         messages = [
             {
@@ -92,6 +99,9 @@ class XAIClient(LLMClient):
             print(f"Error: {e}")
     
     def get_response_with_tools(self, model: str, messages: list, tools: list = None):
+        """
+        Get a response from the xAi api with tools pipeline
+        """
         try:
             completion = self.client.chat.completions.create(
                 model=model,
@@ -99,7 +109,7 @@ class XAIClient(LLMClient):
                 tools=tools,
             )
             print(f"Tokens Usage:\n{completion.usage}\n")
-            return completion.choices[0].message
+            return completion.choices[0].message, completion.usage
         except Exception as e:
             print(f"Error: {e}")
 
@@ -107,7 +117,7 @@ class XAIClient(LLMClient):
 @dataclass
 class OllamaClient(LLMClient):
     """
-    NOT TESTED
+    ok TESTED
     The ollama docs say I can use the openai sdk and use the v1 endpoint.
     """
     base_url: str = "http://localhost:11434/v1"
@@ -119,24 +129,61 @@ class OllamaClient(LLMClient):
             api_key=self.api_key
         )
 
-    def get_response(self, model: str, messages: List[dict], **kwargs) -> str:
+    def get_response(self, model: str, messages: list = None):
+        """
+        Get a response from a local Ollama model.
+        """
         try:
-            completion = self.client.chat.completions.create(model=model, messages=messages, **kwargs)
-            return completion.choices[0].message.content
-        except Exception as e:
-            print(f"Error in OllamaClient.get_response: {e}")
-
-    def get_structured_response(self, model: str, response_format: type[BaseModel], content: str, **kwargs) -> BaseModel:
-        try:
-            response = self.client.chat(
+            completion = self.client.chat.completions.create(
                 model=model,
-                messages=[{"role": "user", "content": content}],
-                format=response_format.model_json_schema(),
-                **kwargs
+                messages=messages,
             )
-            return response_format.model_validate_json(response.message.content)
+            print(f"Tokens Usage:\n{completion.usage}\n")
+            return completion.choices[0].message.content
+
         except Exception as e:
-            print(f"Error in OllamaClient.get_structured_response: {e}")
+            print(f"Error: {e}")
+    
+    def get_structured_response(self, model: str, response_format: type[BaseModel] = None, content: str = None) -> BaseModel:
+        """
+        Get a structured output response from the local Ollama api.
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": "Extract structured information from the content."
+            },
+            {
+                "role": "user",
+                "content": content
+            }
+        ]
+
+        try:
+            completion = self.client.chat.completions.parse(
+                model=model,
+                messages=messages,
+                response_format=response_format,
+            )
+            return completion.choices[0].message.parsed
+        
+        except Exception as e:
+            print(f"Error: {e}")
+    
+    def get_response_with_tools(self, model: str, messages: list, tools: list = None):
+        """
+        Get a response from a local Ollama model with tools pipeline
+        """
+        try:
+            completion = self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                tools=tools,
+            )
+            print(f"Tokens Usage:\n{completion.usage}\n")
+            return completion.choices[0].message, completion.usage
+        except Exception as e:
+            print(f"Error: {e}")
 
 
 @dataclass
@@ -149,52 +196,99 @@ class OpenAIClient(LLMClient):
     def __post_init__(self):
         self.client = OpenAI(api_key=self.api_key)
 
-    def get_response(self, model: str, messages: List[dict], **kwargs) -> str:
+    def get_response(self, model: str, messages: list = None):
         """
-        Get a plain text response from OpenAI models (ChatGPT, GPT-4, etc).
+        Get a response from the OpenAI api.
         """
         try:
             completion = self.client.chat.completions.create(
                 model=model,
                 messages=messages,
-                **kwargs
             )
+            print(f"Tokens Usage:\n{completion.usage}\n")
             return completion.choices[0].message.content
-        except Exception as e:
-            print(f"Error in OpenAIClient.get_response: {e}")
 
-    def get_structured_response(self, model: str, response_format: type[BaseModel], content: str, **kwargs) -> BaseModel:
+        except Exception as e:
+            print(f"Error: {e}")
+    
+    def get_structured_response(self, model: str, response_format: type[BaseModel] = None, content: str = None) -> BaseModel:
         """
-        Get structured response using Pydantic schema validation.
+        Get a structured output response from the OpenAI api.
         """
         messages = [
-            {"role": "system", "content": "Extract structured information from the content."},
-            {"role": "user", "content": content}
+            {
+                "role": "system",
+                "content": "Extract structured information from the content."
+            },
+            {
+                "role": "user",
+                "content": content
+            }
         ]
+
         try:
             completion = self.client.chat.completions.parse(
                 model=model,
                 messages=messages,
                 response_format=response_format,
-                **kwargs
             )
             return completion.choices[0].message.parsed
+        
         except Exception as e:
-            print(f"Error in OpenAIClient.get_structured_response: {e}")
+            print(f"Error: {e}")
+    
+    def get_response_with_tools(self, model: str, messages: list, tools: list = None):
+        """
+        Get a response from the OpenAI api with tools pipeline
+        """
+        try:
+            completion = self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                tools=tools,
+            )
+            print(f"Tokens Usage:\n{completion.usage}\n")
+            return completion.choices[0].message, completion.usage
+        except Exception as e:
+            print(f"Error: {e}")
 
 
 class IsoClient:
     """
-    Iso agent class that combines instructions, parameters, LLM client, and memory. Responsible for building prompts dynamically, handling context, and generating responses.
+    Iso agent class that combines instructions, parameters, LLM client, and memory. 
+    Responsible for building prompts dynamically, handling context, and generating responses.
     """
 
-    def __init__(self, llm_client: XAIClient, instructions: ModelInstructions, cache_capacity: int = 40, fact_store_path: str = "facts.yaml"):
+    def __init__(self, llm_client: LLMClient, instructions: ModelInstructions, cache_capacity: int = 20, fact_store_path: str = "facts.yaml"):
         self.llm_client = llm_client
         self.instructions = instructions
         self.message_cache = MessageCache(capacity=cache_capacity)
         self.memory = ChromaMemoryAdapter()
         self.fact_store = FactStore(fact_store_path)
-    
+        self.file_handler = FileHandler()
+        self._tools = []
+
+        self.register_tool(
+            name="add_fact",
+            description="Add a new fact as a subject-predicate-object triple.",
+            parameters=Fact.model_json_schema()
+        )
+        self.register_tool(
+            name="create_file",
+            description="Create a new file with given filename and content",
+            parameters=FileCreateRequest.model_json_schema()
+        )
+        self.register_tool(
+            name="edit_file",
+            description="Edit an existing file with new content",
+            parameters=FileEditRequest.model_json_schema()
+        )
+        self.register_tool(
+            name="delete_file",
+            description="Delete a file by filename",
+            parameters=FileDeleteRequest.model_json_schema()
+        )
+
     def build_prompt(self, user_input: str):
         # chat history
         chat_history = self.message_cache.get_chat_history()
@@ -217,57 +311,72 @@ class IsoClient:
         for fact in facts_context:
             facts_formatted.append(fact.to_memory_string())
         #print(f"Facts Context: {facts_formatted}")
+
+        # contents of workspace dir
+        workspace_contents = self.file_handler.list_files()
         
         # return instructions to prompt script
-        messages = self.instructions.to_prompt_script(facts_context=facts_formatted, mem_context=memory_context_formatted, knowledge_context=knowledge_context, chat_history=chat_history, user_request=user_input)
+        messages = self.instructions.to_prompt_script(facts_context=facts_formatted, mem_context=memory_context_formatted, knowledge_context=knowledge_context, chat_history=chat_history, user_request=user_input, workspace_contents=workspace_contents)
         
         return messages
     
     def generate_response(self, model: str, user_input: str):
-        # create request and response messages and add to message cache
         prompt = self.build_prompt(user_input=user_input)
-        #print(f"\n===== PROMPT =====\n{prompt}\n\n")
         return self.llm_client.get_response(model=model, messages=prompt)
     
-    def get_add_fact_tool(self):
-        return [
-            {
-                "type": "function",
-                "function": {
-                    "name": "add_fact",
-                    "description": "Add a new fact as a subject-predicate-object triple.",
-                    "parameters": Fact.model_json_schema()
-                }
+    def register_tool(self, name: str, description: str, parameters: dict):
+        """Register a new tool that the LLM can call."""
+        tool_spec = {
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": description,
+                "parameters": parameters
             }
-        ]
+        }
+        self._tools.append(tool_spec)
+
+    def get_tools(self):
+        return self._tools
     
-    def generate_response_with_fact_add(self, model: str, user_input: str):
+    def generate_response_with_tools(self, model: str, user_input: str):
         messages = self.build_prompt(user_input)
-        tools = self.get_add_fact_tool()
+        tools = self.get_tools()
         
         while True:
-            response = self.llm_client.get_response_with_tools(model, messages, tools)
+            response, usage = self.llm_client.get_response_with_tools(model, messages, tools)
             
             if not response.tool_calls:
-                return response.content
+                return response.content, messages, usage
             
             messages.append(response)
             
             for tool_call in response.tool_calls:
-                if tool_call.function.name == "add_fact":
-                    args = json.loads(tool_call.function.arguments)
+                tool_name = tool_call.function.name
+                args = json.loads(tool_call.function.arguments)
+                
+                if tool_name == "add_fact":
                     fact = Fact(**args)
                     self.fact_store.append_fact(fact)
                     result = {"status": "fact_added", "fact": args}
+                elif tool_name == "create_file":
+                    result = self.file_handler.create_file(args)
+
+                elif tool_name == "edit_file":
+                    result = self.file_handler.edit_file(args)
+
+                elif tool_name == "delete_file":
+                    result = self.file_handler.delete_file(args)
                 else:
-                    result = {"status": "unknown_tool"}
+                    result = {"status": "unknown_tool", "tool": tool_name}
                 
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
-                    "name": tool_call.function.name,
+                    "name": tool_name,
                     "content": json.dumps(result)
                 })
+        
 
 # The ais are pretty insistent on using these abstract base classes.
 class ChatClient(ABC):

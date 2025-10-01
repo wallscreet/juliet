@@ -33,16 +33,24 @@ class FactStore:
                 yaml.dump({'facts': []}, f)
 
     def append_fact(self, fact: Fact):
-        # Append to YAML file
         with open(self.file_path, 'r') as f:
             data = yaml.safe_load(f) or {'facts': []}
         
-        data['facts'].append(fact.model_dump())
+        # Check for duplicates
+        existing_facts = data.get('facts', [])
+        new_fact_dict = fact.model_dump()
+
+        if new_fact_dict in existing_facts:
+            print(f"Duplicate fact detected, skipping: {new_fact_dict}")
+            return  # Don't append duplicates
+
+        data['facts'].append(new_fact_dict)
         
         with open(self.file_path, 'w') as f:
             yaml.dump(data, f, default_flow_style=False)
         
         self.store_fact(fact=fact)
+
     
     def store_fact(self, fact: Fact, collection_name: str = "facts"):
         """
@@ -65,7 +73,7 @@ class FactStore:
             }]
         )
     
-    def retrieve_facts(self, query: str, collection_name: str = "facts", top_k: int = 10) -> List[Fact]:
+    def retrieve_facts(self, query: str, collection_name: str = "facts", top_k: int = 5) -> List[Fact]:
         """
         Retrieve semantically relevant facts from the specified collection.
         Returns a list of Fact objects constructed from metadata.

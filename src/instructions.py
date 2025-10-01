@@ -107,7 +107,6 @@ class ModelInstructions:
                 print(e)
                 return
 
-
     def to_dict(self) -> dict:
         """
         Export config class to a base dict
@@ -124,7 +123,7 @@ class ModelInstructions:
         """
         print(f"Iso Configuration:\n{self.to_dict()}")
     
-    def to_prompt_script(self, facts_context: Optional[List[str]], mem_context: Optional[List[str]], knowledge_context: Optional[List[str]], chat_history: Optional[List[str]], user_request: str) -> List[Dict[str, str]]:
+    def to_prompt_script(self, facts_context: Optional[List[str]], mem_context: Optional[List[str]], knowledge_context: Optional[List[str]], chat_history: Optional[List[str]], user_request: str, workspace_contents: str) -> List[Dict[str, str]]:
         """
         Export instructions class as a prompt template.
         """
@@ -138,6 +137,7 @@ class ModelInstructions:
             {"role": "system", "content": f"{self.system_message}"},
             {"role": "assistant", "content": f"{self.assistant_intro}"},
             {"role": "user", "content": f"Your current focus should be: {self.assistant_focus}"},
+            {"role": "system", "content": f"Workspace directory contents:\n{workspace_contents}"},
             {"role": "system", "content": f"Facts from your Facts Table:\n{facts_context_str}"},
             {"role": "system", "content": f"Request context from your memory:\n{mem_context_str}"},
             {"role": "system", "content": f"Request context from your knowledge base:\n{knowledge_context_str}"},

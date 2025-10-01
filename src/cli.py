@@ -1,7 +1,7 @@
 import sys
 from context import ChromaMemoryAdapter, ConversationManager, YamlMemoryAdapter
 from instructions import ModelInstructions
-from clients import XAIClient, IsoClient
+from clients import XAIClient, IsoClient, OllamaClient
 from context import Conversation, Message
 from uuid import uuid4
 
@@ -43,14 +43,16 @@ class JulietChat(App):
         self.llm_client = XAIClient()
         self.iso_client = IsoClient(llm_client=self.llm_client, instructions=self.instructions)
 
+        self.username = input("Username: ")
         # load or new conversation
         conversation_id = "42"
-        choice = input("new or load? ").lower()
+        #choice = input("new or load? ").lower()
+        choice = "load"
         if choice == "new":
             self.conversation = Conversation.start_new(
                 host=self.instructions.name,
                 host_is_bot=True,
-                guest="Wallscreet",
+                guest=self.username,
                 guest_is_bot=False,
                 uuid_override=conversation_id,
             )
@@ -60,13 +62,14 @@ class JulietChat(App):
                 conversation_id=conversation_id,
                 host=self.instructions.name,
                 host_is_bot=True,
-                guest="Wallscreet",
+                guest=self.username,
                 guest_is_bot=False,
             )
             for turn in self.conversation.turns[-self.iso_client.message_cache.capacity:]:
                 self.iso_client.message_cache.add_turn(turn=turn)
 
         self.conversation_id = conversation_id
+        print(f"Welcome, {self.username}")
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -81,11 +84,6 @@ class JulietChat(App):
         self.user_input = self.query_one("#user_input", TextArea)
         self.user_input.focus()
 
-        # Override TextArea's default Ctrl+Enter binding
-        self.user_input.bindings = [
-            Binding("ctrl+enter", "app.send_message", "Send Message", show=False)
-        ]
-
         for turn in self.conversation.turns:
             self._add_to_history(f"**{turn.request.speaker}:**\n{turn.request.content}\n")
             self._add_to_history(f"**{turn.response.speaker}:**\n{turn.response.content}\n\n---")
@@ -95,23 +93,29 @@ class JulietChat(App):
         self.history.scroll_end(animate=True)
 
     def action_send_message(self) -> None:
-        """Triggered by Ctrl+Enter."""
+        """Triggered by Alt+Enter."""
+        # TODO: Workspace folder - iterate over files and give list or dict of contents. Maybe see if possible to include a tree in the prompt.
+
         user_input = self.user_input.text.strip()
         if not user_input:
             return
 
-        self._add_to_history(f"**Wallscreet:**\n{user_input}")
+        self._add_to_history(f"**{self.username}:**\n{user_input}")
         self.user_input.text = ""
 
-        response = self.iso_client.generate_response_with_fact_add(
+        response, prompt_messages, usage = self.iso_client.generate_response_with_tools(
             model="grok-4-fast-non-reasoning",
+            #model="qwen3",
             user_input=user_input,
         )
+        
+        # print full prompt to message history
+        #self._add_to_history(f"**Prompt Messages:**\n{prompt_messages}\n")
 
         request_message = Message(
             uuid=str(uuid4()),
             role="user",
-            speaker="Wallscreet",
+            speaker=f"{self.username}",
             content=user_input,
         )
 
@@ -127,7 +131,8 @@ class JulietChat(App):
         self.iso_client.message_cache.add_turn(turn=turn)
         self.chroma_adapter.store_turn(conversation_id=self.conversation_id, turn=turn)
 
-        self._add_to_history(f"**{self.instructions.name}:**\n{response}\n\n---")
+        self._add_to_history(f"**{self.instructions.name}:**\n{response}\n\n")
+        self._add_to_history(f"**Token Usage:**\n{usage}\n\n---")
 
 
 if __name__ == "__main__":
