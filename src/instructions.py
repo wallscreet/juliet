@@ -134,16 +134,16 @@ class ModelInstructions:
         chat_history_str = "\n".join(chat_history) if chat_history else "No chat history"
 
         messages = [
-            {"role": "system", "content": f"{self.system_message}"},
-            {"role": "assistant", "content": f"{self.assistant_intro}"},
-            {"role": "user", "content": f"Your current focus should be: {self.assistant_focus}"},
-            {"role": "system", "content": f"Workspace directory contents:\n{workspace_contents}"},
-            {"role": "system", "content": f"Facts from your Facts Table:\n{facts_context_str}"},
-            {"role": "system", "content": f"Request context from your memory:\n{mem_context_str}"},
-            {"role": "system", "content": f"Request context from your knowledge base:\n{knowledge_context_str}"},
-            {"role": "system", "content": f"Conversation chat history:\n{chat_history_str}"},
-            {"role": "user", "content": f"User Request: {user_request}"},
-            {"role": "assistant", "content": ""},
+            {"role": "system", "content": f"<system>{self.system_message}</system>\n"},
+            {"role": "assistant", "content": f"<messages>{self.assistant_intro}</messages>\n"},
+            {"role": "user", "content": f"<system>Your current focus should be: {self.assistant_focus}</system>\n"},
+            {"role": "system", "content": f"<workspace>Workspace directory contents:\n{workspace_contents}</workspace>\n"},
+            {"role": "system", "content": f"<facts>Facts from your Facts Table:\n{facts_context_str}</facts>\n"},
+            {"role": "system", "content": f"<memory>Request context from your memory:\n{mem_context_str}</memory>\n"},
+            {"role": "system", "content": f"<knowledge>Request context from your knowledge base:\n{knowledge_context_str}<knowledge>\n"},
+            {"role": "system", "content": f"<history>Conversation chat history:\n{chat_history_str}</history>\n"},
+            {"role": "user", "content": f"<messages>User Request: {user_request}</messages>\n"},
+            {"role": "assistant", "content": "<messages>"},
         ]
 
         return messages

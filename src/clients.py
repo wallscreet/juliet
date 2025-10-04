@@ -267,6 +267,7 @@ class IsoClient:
         self.fact_store = FactStore(fact_store_path)
         self.file_handler = FileHandler()
         self._tools = []
+        self.use_docs = False
 
         self.register_tool(
             name="add_fact",
@@ -359,6 +360,7 @@ class IsoClient:
                     fact = Fact(**args)
                     self.fact_store.append_fact(fact)
                     result = {"status": "fact_added", "fact": args}
+
                 elif tool_name == "create_file":
                     result = self.file_handler.create_file(args)
 
@@ -367,6 +369,7 @@ class IsoClient:
 
                 elif tool_name == "delete_file":
                     result = self.file_handler.delete_file(args)
+
                 else:
                     result = {"status": "unknown_tool", "tool": tool_name}
                 

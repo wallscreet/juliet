@@ -6,15 +6,23 @@ from context import Conversation, Message
 from uuid import uuid4
 
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Markdown, TextArea
+from textual.widgets import Header, Footer, Markdown, TextArea, Static
 from textual.containers import Container, VerticalScroll
 from textual.binding import Binding
+from rich.panel import Panel
 
 
 class JulietChat(App):
     CSS = """
     #history {
         border: round orange;
+        padding: 1;
+    }
+
+    #title {
+        text-align: center;
+        color: magenta;
+        height: auto;
         padding: 1;
     }
 
@@ -73,6 +81,7 @@ class JulietChat(App):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
+        #yield Static(Panel.fit("[bold magenta]JulietChat[/]", border_style="cyan"), id="title")
         yield Container(
             VerticalScroll(id="history"),
             TextArea(placeholder="Type your message here... (Ctrl+Enter to send)", id="user_input"),
@@ -130,6 +139,8 @@ class JulietChat(App):
         self.chroma_adapter.store_turn(conversation_id=self.conversation_id, turn=turn)
 
         self._add_to_history(f"**{self.instructions.name}:**\n{response}\n\n")
+
+        # print token usage to message history
         self._add_to_history(f"**Token Usage:**\n{usage}\n\n---")
 
 
