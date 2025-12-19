@@ -176,7 +176,19 @@ class JulietChat(App):
         # print full prompt to message history
         if self.prompt_debug:
             self._add_to_history(f"**Prompt Messages:**\n{prompt_messages}\n")
-
+           # debug_str = "Full Prompt Messages (raw):\n\n"
+           # for msg in prompt_messages:
+               # if isinstance(msg, dict):
+                   # role = msg.get('role', 'unknown')
+                   # content = msg.get('content', '')
+               # else:  # ChatCompletionMessage
+                   # role = msg.role
+                   # content = msg.content or str(msg.tool_calls) if msg.tool_calls else ''
+        
+               # debug_str += f"Role: {role}\nContent:\n{content}\n{'-'*50}\n"
+    
+           # self._add_to_history(f"**Prompt Debug:**\n{debug_str}")
+        
         request_message = Message(
             uuid=str(uuid4()),
             role="user",
