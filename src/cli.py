@@ -168,7 +168,7 @@ class JulietChat(App):
         self.user_input.text = ""
 
         response, prompt_messages, usage = self.iso_client.generate_response_with_tools(
-            model="grok-4-fast-non-reasoning",
+            model="grok-4-1-fast-non-reasoning",
             #model="dolphin2.2-mistral",
             user_input=user_input,
         )
