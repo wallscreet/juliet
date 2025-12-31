@@ -85,7 +85,11 @@ class JulietChat(App):
                 method="load", 
                 assistant_name=self.assistant_name
         )
+        
+        # Instantiate llm client
         self.llm_client = llm_client
+       
+        # Instantiate Iso client
         self.iso_client = IsoClient(
                 llm_client=self.llm_client, 
                 instructions=self.instructions, 
@@ -125,7 +129,7 @@ class JulietChat(App):
         #yield Static(Panel.fit("[bold magenta]JulietChat[/]", border_style="cyan"), id="title")
         yield Container(
             VerticalScroll(id="history"),
-            TextArea(placeholder="Type your message here... (Ctrl+Enter to send)", id="user_input"),
+            TextArea(placeholder="Type your message here... (Alt+Enter to send)", id="user_input"),
         )
         yield Footer()
 
@@ -153,15 +157,15 @@ class JulietChat(App):
             self.prompt_debug = not self.prompt_debug
             status = "ON" if self.prompt_debug else "OFF"
             self._add_to_history(f"**System:** Debug prompt display is now **{status}**")
-            self.user_input.text = ""  # Clear the input
+            self.user_input.text = ""
             return
         
         if user_input == "/tokens":
-            # Toggle the debug flag
+            # Toggle the token counter flag
             self.token_counter = not self.token_counter
             status = "ON" if self.token_counter else "OFF"
             self._add_to_history(f"**System:** Token Counter display is now **{status}**")
-            self.user_input.text = ""  # Clear the input
+            self.user_input.text = ""
             return
 
         self._add_to_history(f"**{self.username}:**\n{user_input}")
@@ -215,7 +219,6 @@ class JulietChat(App):
             self._add_to_history(f"**Token Usage:**\n{usage}\n\n---")
          
         
-
 if __name__ == "__main__":
     try:
         llm_client = XAIClient()
@@ -230,3 +233,4 @@ if __name__ == "__main__":
         app.run()
     except KeyboardInterrupt:
         sys.exit(0)
+
